@@ -101,10 +101,8 @@
  * }
  ------------------------------------------- */
 
-MEMORY { .sram : ORIGIN = 0x402F0400,\
-		LENGTH = 0x1B000 }
-MEMORY { .sdram : ORIGIN = 0x80A00000, \
-		LENGTH = 0x80000 }
+MEMORY { .sram : ORIGIN = 0x402F0400, LENGTH = 0x1B000 }
+MEMORY { .sdram : ORIGIN = 0x80A00000, LENGTH = 0x80000 }
 
 OUTPUT_FORMAT("elf32-littlearm", "elf32-littlearm", "elf32-littlearm")
 OUTPUT_ARCH(arm)
