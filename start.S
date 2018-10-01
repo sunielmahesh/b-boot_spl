@@ -8,20 +8,18 @@
  *
  *************************************************************************/
 
-	.globl  reset
-        .globl  save_boot_params_ret
-        .type   save_boot_params_ret,%function
+	.global  reset  /* global or globl */
+	.global save_boot_params_ret
 
 reset:
-        /* Allow the board to save important registers */
-        b       save_boot_params
+	b save_boot_params
 
 save_boot_params_ret:
 
 /*
  * disable interrupts (FIQ and IRQ), also set the cpu to SVC32 mode,
  * except if in HYP mode already
- * check for hypervisor mode is made here, refer to start.S main filr
+ * check for hypervisor mode is made here and also bootparams, refer to start.S main file
  * for more details
  * mrc implies read
  */
@@ -55,6 +53,18 @@ save_boot_params_ret:
 	bl	_main
 
 /*
+ * here r0 might be containing some information, store it in scratch space SRAM location @ 0x4030B424
+ * define OMAP_SRAM_SCRATCH_BOOT_PARAMS	(SRAM_SCRATCH_SPACE_ADDR + 0x24)
+ * = 0x4030B400 + 0x24
+ * save_boot_params was grabbed from arch/arm/mach-omap2/lowlevel_init.S 
+ */
+
+save_boot_params:
+        ldr     r1, =0x4030B424
+        str     r0, [r1]
+        b       save_boot_params_ret
+
+/*
  * cpu_init_cp15
  *
  * Setup CP15 registers (cache, MMU, TLBs). The I-cache is turned on unless
@@ -62,7 +72,7 @@ save_boot_params_ret:
  * mcr => write into registers
  */
 
-ENTRY(cpu_init_cp15)
+cpu_init_cp15:
 /*
  * Invalidate L1 I/D
  * research on the sequence how to do this - may be later
@@ -87,7 +97,6 @@ ENTRY(cpu_init_cp15)
 	orr     r0, r0, #0x00001000     @ set bit 12 (I) I-cache
 	mcr     p15, 0, r0, c1, c0, 0   @ write r0 into c1
 
-	mov     r5, lr                  @ Store my Caller - bl cpu_init_cp15 - above
         mrc     p15, 0, r1, c0, c0, 0   @ r1 has Read Main ID Register (MIDR)
         mov     r3, r1, lsr #20         @ get variant field
         and     r3, r3, #0xf            @ r3 has CPU variant
@@ -96,14 +105,19 @@ ENTRY(cpu_init_cp15)
         orr     r2, r4, r2              @ r2 has combined CPU variant + revision
 
 
-	mrc     p15, 0, r0, c1, c0, 1   @ Read Auxiliary Control Reg
+	mrc     p15, 0, r0, c1, c0, 1   @ Read Auxiliary Control Reg (ACR)
 	orr     r0, r0, #(0x1 << 6)     @ Set IBE bit always to enable OS WA
-	push    {r1-r5}                 @ Save the cpu info registers
-        bl      v7_arch_cp15_set_acr
-        pop     {r1-r5}                 @ Restore the cpu info - fall through
-
-	mov     pc, r5                  @ back to my caller
-ENDPROC(cpu_init_cp15)
+/*
+ * the below four lines are replaced by a single instrruction, at the end of the day
+ * ACR needs to get updated, so just write using a single instr, i didnt understand
+ * what they were doing with the below 4 instrs.
+ * push    {r1-r5}                 @ Save the cpu info registers
+ * may be stack pointer set in bootrom is used here i think, in our code sp is not yet set
+ *       bl      v7_arch_cp15_set_acr
+ *       pop     {r1-r5}                 @ Restore the cpu info - fall through
+ */
+	mcr p15, 0, r0, c1, c0, 1
+	bx  lr                  @ back to my caller
 
 /*
  * CPU_init_critical registers
@@ -112,7 +126,7 @@ ENDPROC(cpu_init_cp15)
  * setup memory timing
  */
 
-ENTRY(cpu_init_crit)
+cpu_init_crit:
         /*
          * Jump to board specific initialization...
          * The Mask ROM will have already initialized
@@ -120,4 +134,30 @@ ENTRY(cpu_init_crit)
          * wake up conditions.
          */
         b       lowlevel_init           @ go setup pll,mux,memory
-ENDPROC(cpu_init_crit)
+
+lowlevel_init:
+
+/*
+ * Setup a temporary stack. Global data is not available yet.
+ * the code below just set's up a temporary stack and makes r9 to store global data, here
+ * global data is ignored.
+ * #define CONFIG_SYS_INIT_SP_ADDR NON_SECURE_SRAM_END - GENERATED_GBL_DATA_SIZE)
+ * tries searching GENERATED_GBL_DATA_SIZE or how it is computed but couldnt find
+ * disassembled lowlevel_init.o in spl and found out that GENERATED_GBL_DATA_SIZE = 224 bytes
+ * 0:	e59fd010 	ldr	sp, [pc, #16]	; 18 <lowlevel_init+0x18>
+ * 4:	e3cdd007 	bic	sp, sp, #7
+ * 8:	e3a09000 	mov	r9, #0
+ * c:	e92d5000 	push	{ip, lr}
+ * 10:	ebfffffe 	bl	0 <lowlevel_init>
+ * 14:	e8bd9000 	pop	{ip, pc}
+ * 18:	4030ff20 	.word	0x4030ff20
+ * ldr     sp, =CONFIG_SYS_INIT_SP_ADDR = 0x40310000 - E0 = 0x4030FF00
+ */ 
+
+	ldr     sp, =0x4030FF20
+	bic     sp, sp, #7 /* 8-byte alignment for ABI compliance => last three bits should be always zero */
+	mov     r9, #0 /* #ifdef CONFIG_SPL_DM */
+	bx      lr /* return to caller */
+
+_main:
+	b .

@@ -8,7 +8,7 @@ all: ${BINS}
 
 show: dummy_app_disasm
 
-dummy_app.elf: vector.o
+dummy_app.elf: vector.o start.o
 # the above target is depending on the following .o files
 # when ever it sees the rule %.elf: %.o this will be executed
 # and corresponding .o files (intermediate) will not be deleted

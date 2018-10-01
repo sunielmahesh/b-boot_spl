@@ -30,7 +30,7 @@
 _start:
 	ARM_VECTORS
 
-        .globl  _reset
+        .globl  reset
         .globl  _undefined_instruction
         .globl  _software_interrupt
         .globl  _prefetch_abort
